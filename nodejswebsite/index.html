@@ -1,0 +1,210 @@
+<html lang="en">
+    <head>
+        <title>RaspberryPi BabyCam</title>
+        <meta charset="utf-8" />
+        <meta http-equiv="X-UA-COMPATIBLE" content="IE=edge" />
+        <meta name="viewport" content="width=device-width" />
+
+        <style type="text/css">
+            body {
+                background-image: url("owlbackground.jpg");
+            }
+
+            h1 {
+                text-align:center;
+            }
+
+            .pinkDiv {
+                background-color: pink;
+            }
+
+            .centeredImage {
+                text-align:center;
+                margin-top:0px;
+                margin-bottom:0px;
+                padding:0px;
+            }
+        </style>
+
+        <script type="text/javascript" src="jquery-1.11.3.min.js"></script>
+        <script>
+            var reloadCount = 0;
+
+            $(document).ready(function() {
+                this.mainTimer = setTimeout(onTimerTick, 1000);
+
+                $(window).bind('resizeCompleted', function() {
+                    resizeStreamingImage();
+                });
+
+                $(window).resize(function() {
+                    if (this.resizeTimer) {
+                        clearTimeout(this.resizeTimer);
+                    }
+
+                    this.resizeTimer = setTimeout(function() {
+                        $(this).trigger('resizeCompleted');
+                    }, 300);
+                });
+            });
+
+            function onTimerTick() {
+                clearTimeout(this.mainTimer);
+                this.mainTimer = setTimeout(onTimerTick, 10000);
+
+                $.ajax({
+                    type: "GET",
+                    url: "/currenttemp",
+                    success: function(data) {
+                        $('#currentTemp').text(data);
+                    }
+                });
+
+                $.ajax({
+                    type: "GET",
+                    url: "/runningstatus",
+                    success: function(data) {
+                        if (data === "1") {
+                            if (reloadCount === 0) {
+                                // enable video image stream
+                                $('#streamingImage').show();
+                                $('#headerMessage').text("You are viewing a live image stream of Baby Hannah!");
+                            }
+                            else {
+                                window.location.reload();
+                            }
+                        }
+                        else {
+                            // disable video image stream
+                            reloadCount += 1;
+                            $('#streamingImage').hide();
+                            $('#headerMessage').text("The live image stream is currently disabled!");
+                        }
+                    }
+                });
+            }
+
+            function resizeStreamingImage() {
+
+                // we don't care what these are so much as that the ratio between them is the same
+                var currentWidth = 1280;
+                var currentHeight = 720;
+
+                var desiredWidth = getViewPortWidth() * 0.95;
+
+                // we don't care about height - we are scaling to fit width, so set this to a stupidly high number
+                var maximumHeight = 100000;
+                var newSizes = DetermineScaledDimensions(currentHeight, currentWidth, maximumHeight, desiredWidth);
+                var newHeight = newSizes[0];
+                var newWidth = newSizes[1];
+
+                var streamingImageObject = $('#streamingImage');
+                streamingImageObject.width(newWidth);
+                streamingImageObject.height(newHeight);
+            }
+
+            function getViewPortWidth() {
+                return window.innerWidth || document.documentElement.clientWidth || document.body.clientWidth;
+            }
+
+            function getViewPortHeight() {
+                return window.innerHeight || document.documentElement.clientHeight || document.body.clientHeight;
+            }
+
+            function DetermineScaledDimensions(imageHeight, imageWidth, maxHeight, maxWidth) {
+                var returnSizes = [];
+
+                // first figure out if we even have to do anything
+                if ((imageHeight <= maxHeight) && (imageWidth <= maxWidth)) {
+                    returnSizes.push(imageHeight);
+                    returnSizes.push(imageWidth);
+                    return returnSizes;
+                }
+
+                var newHeight;
+                var newWidth;
+                var percentageDiff;
+
+                // if only ONE size (H or W) is bigger than the max, we use that for the scale
+                var isHeightBiggerThanMax = imageHeight > maxHeight;
+
+                if (!isHeightBiggerThanMax) {
+                    // we need to start with the width instead
+                    newWidth = DetermineNewSize(imageWidth, maxWidth);
+                    percentageDiff = (newWidth / imageWidth) * 100;
+
+                    // we know the width matches now, we just need to figure out the height
+                    newHeight = imageHeight * (percentageDiff / 100);
+                    if (newHeight > maxHeight) {
+                        var tempNewHeight = DetermineNewSize(newHeight, maxHeight);
+                        var heightPercentageDiff = (tempNewHeight / newHeight) * 100;
+
+                        // assign tempNewHeight to newHeight
+                        newHeight = tempNewHeight;
+                        newWidth = newWidth * (heightPercentageDiff / 100);
+                    }
+                }
+                else {
+                    // we know that the height is bigger than the max, so we can just start with that
+                    newHeight = DetermineNewSize(imageHeight, maxHeight);
+                    percentageDiff = (newHeight / imageHeight) * 100;
+
+                    // we know the height matches now, we just need to figure out the width
+                    newWidth = imageWidth * (percentageDiff / 100);
+                    if (newWidth > maxWidth) {
+                        var tempNewWidth = DetermineNewSize(newWidth, maxWidth);
+                        var widthPercentageDiff = (tempNewWidth / newWidth) * 100;
+
+                        // assign tempNewWidth to newWidth
+                        newWidth = tempNewWidth;
+                        newHeight = newHeight * (widthPercentageDiff / 100);
+                    }
+                }
+
+                returnSizes.push(newHeight);
+                returnSizes.push(newWidth);
+
+                return returnSizes;
+            }
+
+            function DetermineNewSize(currentSize, maxSize) {
+                if (currentSize <= maxSize) {
+                    return currentSize;
+                }
+
+                // the current size is bigger than the max size
+                var newSize;
+                var counter = 99;
+                while (true) {
+                    if (counter <= 1) {
+                        break;
+                    }
+
+                    newSize = currentSize * (counter / 100);
+                    if (newSize <= maxSize) {
+                        break;
+                    }
+
+                    counter = counter - 1;
+                }
+
+                return newSize;
+            }
+        </script>
+    </head>
+	<body>
+		<div>
+            <div class="pinkDiv">
+                <h1 id="headerMessage" style="text-align:center;"></h1>
+            </div>
+
+            <div class="centeredImage">
+                <img id="streamingImage" src="http://192.168.1.5:9000/?action=stream" border="8" />
+            </div>
+
+            <div class="pinkDiv">
+                <h1>The Current Temperature is <span id="currentTemp"></span> &deg; F</h1>
+            </div>
+		</div>
+	</body>
+</html>
